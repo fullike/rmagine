@@ -261,6 +261,39 @@ void computeNoObjectId()
     mem.object_ids[glob_id] = __UINT_MAX__;
 }
 
+__forceinline__ __device__ 
+float3 randomColor(int i) 
+{
+    int r = unsigned(i) * 13 * 17 + 0x234235;
+    int g = unsigned(i) * 7 * 3 * 5 + 0x773477;
+    int b = unsigned(i) * 11 * 19 + 0x223766;
+    
+    return make_float3(
+        (r & 255) / 255.0f,
+        (g & 255) / 255.0f,
+        (b & 255) / 255.0f
+    );
+}
+
+__forceinline__ __device__
+void computeColor()
+{
+    const unsigned int glob_id = optixGetPayload_0();
+    float3 color = randomColor(optixGetPrimitiveIndex());
+    const int r = int(255.99f*color.x);
+    const int g = int(255.99f*color.y);
+    const int b = int(255.99f*color.z);
+    const uint32_t rgba = 0xff000000 | (r<<0) | (g<<8) | (b<<16);
+    mem.colors[glob_id] = rgba;
+}
+
+__forceinline__ __device__
+void computeNoColor()
+{
+    const unsigned int glob_id = optixGetPayload_0();
+    mem.colors[glob_id] = 0;
+}
+
 extern "C" __global__ void __miss__ms()
 {
     #if OPTIX_VERSION >= 70400
@@ -300,6 +333,11 @@ extern "C" __global__ void __miss__ms()
     if(mem.computeObjectIds)
     {
         computeNoObjectId();
+    }
+
+    if(mem.computeColors)
+    {
+        computeNoColor();
     }
 }
 
@@ -342,5 +380,10 @@ extern "C" __global__ void __closesthit__ch()
     if(mem.computeObjectIds)
     {
         computeObjectId();
+    }
+
+    if(mem.computeColors)
+    {
+        computeColor();
     }
 }

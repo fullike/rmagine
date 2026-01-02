@@ -75,6 +75,14 @@ static void set_generic_data_(
             mem.object_ids = res.ObjectIds<MemT>::object_ids.raw();
         }
     }
+
+    if constexpr(BundleT::template has<Colors<MemT> >())
+    {
+        if(res.Colors<MemT>::colors.size() > 0)
+        {
+            mem.colors = res.Colors<MemT>::colors.raw();
+        }
+    }
 }
 
 template<typename BundleT>
@@ -134,6 +142,11 @@ static void set_generic_flags_(
     {
         flags.computeObjectIds = true;
     }
+
+    if constexpr(BundleT::template has<Colors<MemT> >())
+    {
+        flags.computeColors = true;
+    }
 }
 
 template<typename BundleT>
@@ -164,6 +177,7 @@ static void set_generic_flags_(
     // flags.computeFaceIds = false;
     // flags.computeGeomIds = false;
     // flags.computeObjectIds = false;
+    // flags.computeColors = false;
 
     if constexpr(BundleT::template has<Hits<MemT> >())
     {
@@ -220,6 +234,14 @@ static void set_generic_flags_(
             flags.computeObjectIds = true;
         }
     }
+
+    if constexpr(BundleT::template has<Colors<MemT> >())
+    {
+        if(res.Colors<MemT>::colors.size() > 0)
+        {
+            flags.computeColors = true;
+        }
+    }
 }
 
 template<typename BundleT>
@@ -261,13 +283,14 @@ struct hash<rmagine::OptixSimulationDataGeneric>
         std::size_t faceIdsKey = static_cast<std::size_t>(k.computeFaceIds) << 4;
         std::size_t geomIdsKey = static_cast<std::size_t>(k.computeGeomIds) << 5;
         std::size_t objectIdsKey = static_cast<std::size_t>(k.computeObjectIds) << 6;
+        std::size_t colorsKey = static_cast<std::size_t>(k.computeColors) << 7;
 
         // next 8 bit are reserved for sensor type
         // sensor_type should not be higher than 2**8=256
         std::size_t sensorTypeKey = static_cast<std::size_t>(k.model_type) << 24;
         
         // bitwise or
-        return (hitsKey | rangesKey | pointKey | normalsKey | faceIdsKey | geomIdsKey | objectIdsKey);
+        return (hitsKey | rangesKey | pointKey | normalsKey | faceIdsKey | geomIdsKey | objectIdsKey | colorsKey);
     }
 };
 

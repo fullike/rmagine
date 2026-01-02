@@ -125,6 +125,10 @@ struct ObjectIds {
     Memory<unsigned int, MemT> object_ids;
 };
 
+template<typename MemT>
+struct Colors {
+    Memory<uint32_t, MemT> colors;
+};
 
 /**
  * @brief Convenience object if we want to access all attributes at intersection
@@ -197,6 +201,11 @@ static void resize_memory_bundle(BundleT& res,
     if constexpr(BundleT::template has<ObjectIds<MemT> >())
     {
         res.ObjectIds<MemT>::object_ids.resize(W*H*N);
+    }
+
+    if constexpr(BundleT::template has<Colors<MemT> >())
+    {
+        res.Colors<MemT>::colors.resize(W*H*N);
     }
 }
 

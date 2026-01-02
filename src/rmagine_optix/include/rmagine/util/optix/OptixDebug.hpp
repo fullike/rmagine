@@ -44,7 +44,7 @@
 #include <rmagine/util/exceptions.h>
 
 #include <rmagine/util/cuda/CudaDebug.hpp>
-
+#define OPTIX_EXCEPTION_FLAG_DEBUG 0
 
 #if !defined(NDEBUG)
 // DEBUG

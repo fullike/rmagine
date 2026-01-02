@@ -70,6 +70,13 @@ static std::vector<OptixModuleCompileBoundValueEntry> make_bounds(
         options.push_back(option);
     }
 
+    { // computeColors
+        OptixModuleCompileBoundValueEntry option = {};
+        option.pipelineParamOffsetInBytes = offsetof(OptixSimulationDataGeneric, computeColors);
+        option.sizeInBytes = sizeof( OptixSimulationDataGeneric::computeColors );
+        option.boundValuePtr = &flags.computeColors;
+        options.push_back(option);
+    }
     return options;
 }
 

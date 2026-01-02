@@ -135,6 +135,7 @@ endif(RMAGINE_BUILD_TESTS)
 
 #### TOOLS
 if(RMAGINE_BUILD_TOOLS)
+    add_subdirectory(apps/rmagine_sensors)
     add_subdirectory(apps/rmagine_benchmark)
     add_subdirectory(apps/rmagine_synthetic)
     add_subdirectory(apps/rmagine_map_info)

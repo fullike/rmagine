@@ -54,6 +54,7 @@ struct OptixSimulationDataGeneric {
     bool                        computeFaceIds;
     bool                        computeGeomIds;
     bool                        computeObjectIds;
+    bool                        computeColors;
     // Result
     uint8_t*                    hits;
     float*                      ranges;
@@ -62,6 +63,7 @@ struct OptixSimulationDataGeneric {
     unsigned int*               face_ids;
     unsigned int*               geom_ids;
     unsigned int*               object_ids;
+    uint32_t*                   colors;
 
     static OptixSimulationDataGeneric Zero()
     {
@@ -73,6 +75,7 @@ struct OptixSimulationDataGeneric {
         ret.computeFaceIds = false;
         ret.computeGeomIds = false;
         ret.computeObjectIds = false;
+        ret.computeColors = false;
         ret.hits = nullptr;
         ret.ranges = nullptr;
         ret.points = nullptr;
@@ -80,6 +83,7 @@ struct OptixSimulationDataGeneric {
         ret.face_ids = nullptr;
         ret.geom_ids = nullptr;
         ret.object_ids = nullptr;
+        ret.colors = nullptr;
         return ret;
     }
 };
@@ -95,6 +99,7 @@ inline uint32_t get_bounding_id(const OptixSimulationDataGeneric& flags)
     ret |= static_cast<uint32_t>(flags.computeFaceIds) << 4;
     ret |= static_cast<uint32_t>(flags.computeGeomIds) << 5;
     ret |= static_cast<uint32_t>(flags.computeObjectIds) << 6;
+    ret |= static_cast<uint32_t>(flags.computeColors) << 7;
 
     return ret;
 }
