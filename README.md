@@ -95,6 +95,24 @@ colcon build
 
 For more advanced options and detailed instructions, visit the [Wiki](https://uos.github.io/rmagine_docs/installation/).
 
+
+## Backends
+
+Rmagine provides multiple computation backends that enable seamless switching between different hardware devices available on a robot. This makes it possible to either offload ray casting workloads to dedicated devices and free resources for other computations, or to utilize all available compute power for large-scale ray casting.
+
+The supported backends differ in terms of device compatibility, acceleration capabilities, and platform availability.
+
+
+| Backend    | Supported Devices                    | Acceleration         | Notes                                                                                                   |
+| ---------- | ------------------------------------ | -------------------- | ------------------------------------------------------------------------------------------------------- |
+| **Embree** | CPU                                  | Software (CPU)       | High-performance CPU-based ray tracing                                                                  |
+| **OptiX**  | NVIDIA GPUs with OptiX support       | Hardware or software | Uses hardware ray tracing when available, otherwise software emulation; not available on Jetson devices |
+| **Vulkan** | GPUs with Vulkan ray tracing support | Hardware ray tracing | Cross-vendor solution; supported on desktop GPUs and embedded platforms such as Jetson                  |
+
+
+Each backend is compiled as an optional CMake component and is only enabled if all required dependencies are available on the system. Detailed instructions and further information on building the optional backends can be found in the [Wiki](https://uos.github.io/rmagine_docs).
+
+
 ## Example
 
 This example demonstrates how to simulate ranges for 100 Velodyne VLP-16 sensors using the Embree backend.  
@@ -174,15 +192,27 @@ Please reference the following paper when using the Rmagine library in your scie
 
 ```bib
 @inproceedings{mock2023rmagine,
-  title={Rmagine: 3D Range Sensor Simulation in Polygonal Maps via Ray Tracing for Embedded Hardware on Mobile Robots}, 
-  author={Mock, Alexander and Wiemann, Thomas and Hertzberg, Joachim},
-  booktitle={IEEE International Conference on Robotics and Automation (ICRA)}, 
-  year={2023},
-  doi={10.1109/ICRA48891.2023.10161388}
+  title     = {Rmagine: 3D Range Sensor Simulation in Polygonal Maps via Ray Tracing for Embedded Hardware on Mobile Robots}, 
+  author    = {Mock, Alexander and Wiemann, Thomas and Hertzberg, Joachim},
+  booktitle = {IEEE International Conference on Robotics and Automation (ICRA)}, 
+  year      = {2023},
+  doi       = {10.1109/ICRA48891.2023.10161388}
 }
 ```
 
-The paper is available on [IEEE Xplore](https://ieeexplore.ieee.org/document/10161388) and as a preprint on [arXiv](https://arxiv.org/abs/2209.13397).
+The paper is available on [IEEE Xplore](https://ieeexplore.ieee.org/document/10161388) and as a preprint on [arXiv](https://arxiv.org/abs/2209.13397). For an overview of how to integrate this library into robotics applications we recommend the following work:
+
+```bib
+@phdthesis{amock2025inverse,
+  title  = {Inverse Sensor Modeling for 6D Mobile Robot Localization in Scene Graphs via Hardware-Accelerated Ray Tracing},
+  author = {Mock, Alexander},
+  school = {Universität Osnabrück},
+  year   = {2025},
+  doi    = {10.48693/802}
+}
+```
+
+which is open-access available to read [**here**](https://osnadocs.ub.uni-osnabrueck.de/handle/ds-2025112613801).
 
 ## Rmagine-Accelerated Applications
 - [rmagine_viewer](https://github.com/amock/rmagine_viewer)
@@ -198,6 +228,6 @@ If you would like to enhance the [documentation](https://uos.github.io/rmagine_d
 ## Maintainment
 
 Maintainers:
-- [Alexander Mock](https://github.com/amock) (Osnabrück University)
+- [Alexander Mock](https://github.com/amock) (Nature Robots)
 
 Contact the people listed above if you want and feel capable to help maintaining this piece of open-source software.
