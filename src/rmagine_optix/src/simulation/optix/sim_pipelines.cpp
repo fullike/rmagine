@@ -59,7 +59,7 @@ SimPipelinePtr make_pipeline_sim(
         pipeline_sim_cache[scene] = {};
     }
 
-    unsigned int traversable_graph_flags = scene->traversableGraphFlags();
+    unsigned int traversable_graph_flags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_ANY;
 
     SimPipelinePtr ret = std::make_shared<SimPipeline>();
 
@@ -77,7 +77,6 @@ SimPipelinePtr make_pipeline_sim(
     ret->sbt->hitgroupRecordStrideInBytes = hit->record_stride;
     ret->sbt->hitgroupRecordCount         = hit->record_count;
 
-    uint32_t          max_traversable_depth = scene->depth();
     const uint32_t    max_trace_depth  = 1; // TODO: 31 is maximum. Set this dynamically?
 
     ret->prog_groups = {
@@ -122,8 +121,6 @@ SimPipelinePtr make_pipeline_sim(
     }
 
     ret->create(scene->context());
-
-    scene->addEventReceiver(ret);
 
     // caching is important. we dont want to receive events from scene more than once per commit
     pipeline_sim_cache[scene][flags] = ret;

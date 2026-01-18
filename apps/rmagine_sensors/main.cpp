@@ -107,7 +107,7 @@ public:
     pub_img = this->create_publisher<sensor_msgs::msg::Image>("/image_raw", 10);
     timer_ = this->create_wall_timer(100ms, std::bind(&PointCloud2Publisher::timer_callback, this));
 
-    OptixMapPtr usd_scene = import_optix_map("/home/zy/assets/scenes/supermarket/abc.usd");
+    OptixMapPtr usd_scene = import_optix_map("/home/zy/assets/background/home_b/Background/test.usd");
     lidar_sim = std::make_shared<SphereSimulatorOptix>(usd_scene);
     camera_sim = std::make_shared<PinholeSimulatorOptix>(usd_scene);
 

@@ -26,7 +26,6 @@ public:
   SimulatorOptix(OptixMapPtr map);
 
   virtual ~SimulatorOptix();
-
   void setMap(OptixMapPtr map);
 
   void setTsb(const Memory<Transform, RAM>& Tsb);

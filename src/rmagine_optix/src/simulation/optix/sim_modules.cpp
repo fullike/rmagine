@@ -86,10 +86,10 @@ std::unordered_map<unsigned int,
 > sim_module_gen_cache;
 
 ProgramModulePtr make_program_module_sim_gen(
-    OptixScenePtr scene, 
+    unsigned int graph_flags,
     unsigned int sensor_id)
 {
-    unsigned int traversable_graph_flags = scene->traversableGraphFlags();
+    unsigned int traversable_graph_flags = graph_flags;
     auto scene_it = sim_module_gen_cache.find(traversable_graph_flags);
 
     if(scene_it != sim_module_gen_cache.end())
@@ -198,7 +198,7 @@ ProgramModulePtr make_program_module_sim_gen(
         pipeline_compile_options.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE;
     }
 
-    ret->compile(&pipeline_compile_options, scene->context());
+    ret->compile(&pipeline_compile_options, optix_default_context());
 
     // cache
     sim_module_gen_cache[traversable_graph_flags][sensor_id] = ret; 
@@ -211,10 +211,10 @@ std::unordered_map<unsigned int,
 > sim_module_hit_miss_cache;
 
 ProgramModulePtr make_program_module_sim_hit_miss(
-    OptixScenePtr scene,
+    unsigned int graph_flags,
     const OptixSimulationDataGeneric& flags)
 {
-    unsigned int traversable_graph_flags = scene->traversableGraphFlags();
+    unsigned int traversable_graph_flags = graph_flags;
     unsigned int bid = get_bounding_id(flags);
 
 
@@ -309,7 +309,7 @@ ProgramModulePtr make_program_module_sim_hit_miss(
     char log[2048]; // For error reporting from OptiX creation functions
     size_t sizeof_log = sizeof( log );
 
-    ret->compile(&pipeline_compile_options, scene->context());
+    ret->compile(&pipeline_compile_options, optix_default_context());
 
     sim_module_hit_miss_cache[traversable_graph_flags][bid] = ret;
 

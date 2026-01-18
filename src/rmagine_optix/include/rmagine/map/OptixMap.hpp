@@ -85,6 +85,7 @@ using OptixMapPtr = std::shared_ptr<OptixMap>;
  * @brief Import a mesh file as OptixMap to an existing OptixContext 
  * 
  */
+
 static OptixMapPtr import_optix_map(
     const std::string& meshfile, 
     OptixContextPtr optix_ctx = optix_default_context())

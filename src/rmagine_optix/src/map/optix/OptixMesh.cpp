@@ -41,34 +41,6 @@ OptixMesh::~OptixMesh()
 
 void OptixMesh::apply()
 {
-    Matrix4x4 M = matrix();
-
-    pre_transform_h[ 0] = M(0,0); // Rxx
-    pre_transform_h[ 1] = M(0,1); // Rxy
-    pre_transform_h[ 2] = M(0,2); // Rxz
-    pre_transform_h[ 3] = M(0,3); // tx
-    pre_transform_h[ 4] = M(1,0); // Ryx
-    pre_transform_h[ 5] = M(1,1); // Ryy
-    pre_transform_h[ 6] = M(1,2); // Ryz
-    pre_transform_h[ 7] = M(1,3); // ty 
-    pre_transform_h[ 8] = M(2,0); // Rzx
-    pre_transform_h[ 9] = M(2,1); // Rzy
-    pre_transform_h[10] = M(2,2); // Rzz
-    pre_transform_h[11] = M(2,3); // tz
-
-    if(!pre_transform)
-    {
-        RM_CUDA_CHECK(cudaMalloc( reinterpret_cast<void**>(&pre_transform), sizeof(float) * 12 ) );
-    }
-
-    RM_CUDA_CHECK( cudaMemcpy(
-        reinterpret_cast<void*>(pre_transform),
-        pre_transform_h,
-        sizeof(float) * 12,
-        cudaMemcpyHostToDevice
-    ));
-
-    m_changed = true;
 }
 
 void OptixMesh::commit()
@@ -76,12 +48,111 @@ void OptixMesh::commit()
     m_vertices_ref = reinterpret_cast<CUdeviceptr>(vertices.raw());
 
     sbt_data.vertex_normals = vertex_normals.raw();
-    sbt_data.face_normals = face_normals.raw();
+    sbt_data.vertex_uvs = vertex_uvs.raw();
 }
 
 unsigned int OptixMesh::depth() const
 {
     return 0;
+}
+
+void OptixMesh::buildGAS()
+{
+    OptixBuildInput triangle_input = {};
+    triangle_input.type                        = OPTIX_BUILD_INPUT_TYPE_TRIANGLES;
+    // VERTICES
+    triangle_input.triangleArray.vertexFormat  = OPTIX_VERTEX_FORMAT_FLOAT3;
+    triangle_input.triangleArray.vertexStrideInBytes = sizeof(Point);
+    triangle_input.triangleArray.numVertices   = vertices.size();
+    triangle_input.triangleArray.vertexBuffers = getVertexBuffer();
+    // FACES
+    triangle_input.triangleArray.indexFormat  = OPTIX_INDICES_FORMAT_UNSIGNED_INT3;
+    triangle_input.triangleArray.indexStrideInBytes  = sizeof(Face);
+    triangle_input.triangleArray.numIndexTriplets    = faces.size();
+    triangle_input.triangleArray.indexBuffer         = getFaceBuffer();
+    if(pre_transform)
+    {
+        triangle_input.triangleArray.transformFormat =  OPTIX_TRANSFORM_FORMAT_MATRIX_FLOAT12;
+        triangle_input.triangleArray.preTransform        = pre_transform;
+    }
+    // ADDITIONAL SETTINGS
+    // move them to mesh object
+    triangle_input.triangleArray.flags         = (const uint32_t [1]) {
+        OPTIX_GEOMETRY_FLAG_DISABLE_ANYHIT
+    };
+    // TODO: this is bad. I define the sbt records inside the sensor programs.
+    triangle_input.triangleArray.numSbtRecords = 1;
+
+    // Acceleration Options
+    // Use default options for simplicity.  In a real use case we would want to
+    // enable compaction, etc
+    OptixAccelBuildOptions accel_options = {};
+
+    unsigned int build_flags = OPTIX_BUILD_FLAG_NONE;
+
+    { // BUILD FLAGS
+        build_flags |= OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
+        build_flags |= OPTIX_BUILD_FLAG_ALLOW_UPDATE;
+        build_flags |= OPTIX_BUILD_FLAG_ALLOW_RANDOM_VERTEX_ACCESS;
+    }
+
+    accel_options.buildFlags = build_flags;
+    accel_options.operation = OPTIX_BUILD_OPERATION_BUILD;
+
+    OptixAccelBufferSizes gas_buffer_sizes;
+    RM_OPTIX_CHECK( optixAccelComputeMemoryUsage(
+                m_ctx->ref(),
+                &accel_options,
+                &triangle_input,
+                1, // Number of build inputs
+                &gas_buffer_sizes
+                ) );
+
+
+    CUdeviceptr d_temp_buffer_gas;
+    RM_CUDA_CHECK( cudaMalloc(
+        reinterpret_cast<void**>( &d_temp_buffer_gas ),
+        gas_buffer_sizes.tempSizeInBytes) );
+
+    if(!m_as)
+    {
+        // make new
+        m_as = std::make_shared<OptixAccelerationStructure>();
+        RM_CUDA_CHECK( cudaMalloc(
+                reinterpret_cast<void**>( &m_as->buffer ),
+                gas_buffer_sizes.outputSizeInBytes
+                ) );
+    } else {
+        if(m_as->buffer_size != gas_buffer_sizes.outputSizeInBytes)
+        {
+            // realloc
+            RM_CUDA_CHECK( cudaFree( reinterpret_cast<void*>( m_as->buffer ) ) );
+            RM_CUDA_CHECK( cudaMalloc(
+                    reinterpret_cast<void**>( &m_as->buffer ),
+                    gas_buffer_sizes.outputSizeInBytes
+                    ) );
+        }
+    }
+
+    m_as->buffer_size = gas_buffer_sizes.outputSizeInBytes;
+    m_as->n_elements = 1;
+
+    RM_OPTIX_CHECK( optixAccelBuild(
+                m_ctx->ref(),
+                m_stream->handle(),                  // CUDA stream
+                &accel_options,
+                &triangle_input,
+                1,                  // num build inputs
+                d_temp_buffer_gas,
+                gas_buffer_sizes.tempSizeInBytes,
+                m_as->buffer,
+                gas_buffer_sizes.outputSizeInBytes,
+                &m_as->handle,
+                nullptr,            // emitted property list
+                0                   // num emitted properties
+                ) );
+
+    RM_CUDA_CHECK( cudaFree( reinterpret_cast<void*>( d_temp_buffer_gas ) ) );
 }
 
 void OptixMesh::computeFaceNormals()
@@ -150,6 +221,17 @@ OptixMeshPtr make_optix_mesh(
         }
         // upload
         ret->vertex_normals = vertex_normals_cpu;
+    }
+
+    if(amesh->HasTextureCoords(0))
+    {
+        Memory<Vector2, RAM> vertex_uvs_cpu(num_vertices);
+        for(size_t i=0; i<num_vertices; i++)
+        {
+            vertex_uvs_cpu[i] = {amesh->mTextureCoords[0][i].x, amesh->mTextureCoords[0][i].y};
+        }
+        // upload
+        ret->vertex_uvs = vertex_uvs_cpu;
     }
 
     ret->apply();

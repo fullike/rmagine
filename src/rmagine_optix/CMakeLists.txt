@@ -246,10 +246,11 @@ set(RMAGINE_OPTIX_SRCS
     src/util/optix/optix_modules.cpp
     # Maps
     src/map/optix/OptixAccelerationStructure.cpp
-    src/map/optix/OptixGeometry.cpp
+    src/map/optix/OptixMaterial.cpp
     src/map/optix/OptixMesh.cpp
-    src/map/optix/OptixInst.cpp
+    src/map/optix/OptixNode.cpp
     src/map/optix/OptixScene.cpp
+    src/map/optix/OptixTexture.cpp
     src/map/optix/OptixTransformable.cpp
     src/map/optix/OptixEntity.cpp
     src/map/optix/OptixSceneEventReceiver.cpp

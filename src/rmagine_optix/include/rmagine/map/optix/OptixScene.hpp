@@ -48,7 +48,7 @@
 #include "optix_sbt.h"
 
 #include "OptixEntity.hpp"
-
+#include <vector>
 #include <map>
 #include <optional>
 
@@ -67,114 +67,24 @@ struct OptixSceneCommitResult
     bool sbt_size_changed = false;
 };
 
-class OptixScene 
+class OptixScene
 : public OptixEntity
 {
 public:
-    
-
     OptixScene(OptixContextPtr context = optix_default_context());
-
     virtual ~OptixScene();
-
-    unsigned int add(OptixGeometryPtr geom);
-    unsigned int get(OptixGeometryPtr geom) const;
-    std::optional<unsigned int> getOpt(OptixGeometryPtr geom) const;
-    bool has(OptixGeometryPtr geom) const;
-    bool has(unsigned int geom_id) const;
-    bool remove(OptixGeometryPtr geom);
-    OptixGeometryPtr remove(unsigned int geom_id);
-
-    std::map<unsigned int, OptixGeometryPtr> geometries() const;
-    std::unordered_map<OptixGeometryPtr, unsigned int> ids() const;
-    
-    OptixInstPtr instantiate();
-
-    inline OptixSceneType type() const 
-    {
-        return m_type;
-    }
-
-    inline OptixGeometryType geom_type() const
-    {
-        return m_geom_type;
-    }
-
-    // geometry can be instanced
-    void cleanupParents();
-    std::unordered_set<OptixInstPtr> parents() const;
-    void addParent(OptixInstPtr parent);
-
-    /**
-     * @brief Call commit after the scene was filles with
-     * geometries or instances to begin the building/updating process
-     * of the acceleration structure
-     * - only after commit it is possible to raytrace
-     * 
-     */
-    OptixSceneCommitResult commit();
-
-    // ACCASSIBLE AFTER COMMIT
-    inline OptixAccelerationStructurePtr as() const
-    {
-        return m_as;
-    }
-
-    inline unsigned int traversableGraphFlags() const
-    {
-        return m_traversable_graph_flags;
-    }
-
-    inline unsigned int depth() const 
-    {
-        return m_depth;
-    }
-
-    inline unsigned int requiredSBTEntries() const 
-    {
-        return m_required_sbt_entries;
-    }
-
-    OptixSceneSBT sbt_data;
-
-    void addEventReceiver(OptixSceneEventReceiverPtr rec);
-    void removeEventReceiver(OptixSceneEventReceiverPtr rec);
-
-    /**
-     * get the size of the complete acceleration structure in bytes
-     * only works correctly for scenes with a deph of at most 2 (deeper scenes are currently not supported anyways)
-     */
-    size_t getAsSize() const;
-
-private:
-    OptixSceneCommitResult buildGAS();
-
-    OptixSceneCommitResult buildIAS();
-
-    void notifyEventReceivers(const OptixSceneCommitResult& info);
-    
-
-    OptixAccelerationStructurePtr m_as;
-
-    OptixSceneType m_type = OptixSceneType::NONE;
-    OptixGeometryType m_geom_type = OptixGeometryType::MESH;
-
-    IDGen gen;
-
-    std::map<unsigned int, OptixGeometryPtr> m_geometries;
-    std::unordered_map<OptixGeometryPtr, unsigned int> m_ids;
-
-    std::unordered_set<OptixInstWPtr> m_parents;
-
-    std::unordered_set<OptixSceneEventReceiverWPtr> m_event_rec;
-
-    bool m_geom_added = false;
-    bool m_geom_removed = false;
-
-    // filled after commit
-    unsigned int m_traversable_graph_flags = 0;
-    unsigned int m_depth = 0;
-    unsigned int m_required_sbt_entries = 0;
+    void add_mesh(OptixMeshPtr mesh) {m_meshes.emplace_back(mesh);}
+    void add_material(OptixMaterialPtr material) {m_materials.emplace_back(material);}
+    void add_texture(OptixTexturePtr texture) {m_textures.emplace_back(texture);}
+    void commit();
+    int num_meshes(){return m_meshes.size();}
+    OptixMeshPtr get_mesh(int index){return m_meshes[index];}
+    OptixNodePtr get_root(){return m_root;}
+protected:
+    std::vector<OptixMeshPtr> m_meshes;
+    std::vector<OptixMaterialPtr> m_materials;
+    std::vector<OptixTexturePtr> m_textures;
+    OptixNodePtr m_root;
 };
 
 OptixScenePtr make_optix_scene(

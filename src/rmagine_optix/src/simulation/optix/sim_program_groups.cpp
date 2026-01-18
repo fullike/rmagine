@@ -2,6 +2,7 @@
 #include "rmagine/simulation/optix/sim_modules.h"
 
 #include "rmagine/map/optix/OptixScene.hpp"
+#include "rmagine/map/optix/OptixMesh.hpp"
 #include "rmagine/util/optix/OptixDebug.hpp"
 
 #include <optix_stubs.h>
@@ -31,60 +32,6 @@ SimHitProgramGroup::~SimHitProgramGroup()
     {
         cudaFreeHost(record_h);
     }
-}
-
-
-void SimHitProgramGroup::onSBTUpdated(
-    bool size_changed)
-{
-    OptixScenePtr scene = m_scene.lock();
-
-    if(scene)
-    {
-        if(size_changed)
-        {
-            size_t n_hitgroups_required = scene->requiredSBTEntries();
-
-            if(n_hitgroups_required > record_count)
-            {
-                // std::cout << "HitGroup update number of records: " << record_count << " -> " << n_hitgroups_required << std::endl;
-                if(record_h)
-                {
-                    RM_CUDA_CHECK( cudaFreeHost( record_h ) );
-                }
-                
-                RM_CUDA_CHECK( cudaMallocHost( &record_h, n_hitgroups_required * record_stride ) );
-
-                for(size_t i=0; i<n_hitgroups_required; i++)
-                {
-                    RM_OPTIX_CHECK( optixSbtRecordPackHeader( prog_group, &record_h[i] ) );
-                }
-
-                if( record )
-                {
-                    RM_CUDA_CHECK( cudaFree( reinterpret_cast<void*>( record ) ) );
-                }
-                
-                RM_CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &record ), n_hitgroups_required * record_stride ) );
-
-                record_count = n_hitgroups_required;
-            }
-        }
-
-        for(size_t i=0; i<record_count; i++)
-        {
-            record_h[i].data = scene->sbt_data;
-        }
-
-        RM_CUDA_CHECK( cudaMemcpyAsync(
-                    reinterpret_cast<void*>( record ),
-                    record_h,
-                    record_count * record_stride,
-                    cudaMemcpyHostToDevice,
-                    scene->stream()->handle()
-                    ) );
-    }
-    
 }
 
 std::unordered_map<OptixSceneWPtr, 
@@ -159,7 +106,7 @@ SimRayGenProgramGroupPtr make_program_group_sim_gen(
     OptixScenePtr scene,
     unsigned int sensor_id)
 {
-    ProgramModulePtr module = make_program_module_sim_gen(scene, sensor_id);
+    ProgramModulePtr module = make_program_module_sim_gen(OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_ANY, sensor_id);
     return make_program_group_sim_gen(scene, module);
 }
 
@@ -231,7 +178,7 @@ SimMissProgramGroupPtr make_program_group_sim_miss(
     OptixScenePtr scene,
     const OptixSimulationDataGeneric& flags)
 {
-    ProgramModulePtr module = make_program_module_sim_hit_miss(scene, flags);
+    ProgramModulePtr module = make_program_module_sim_hit_miss(OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_ANY, flags);
     return make_program_group_sim_miss(scene, module);
 }
 
@@ -270,8 +217,8 @@ SimHitProgramGroupPtr make_program_group_sim_hit(
     ret->create();
 
     { // init SBT Records
-        const size_t n_hitgroup_records = scene->requiredSBTEntries();   
-        const size_t hitgroup_record_size     = sizeof( SimMissProgramGroup::SbtRecordData ) * n_hitgroup_records;
+        const size_t n_hitgroup_records = scene->num_meshes();
+        const size_t hitgroup_record_size     = sizeof( SimHitProgramGroup::SbtRecordData ) * n_hitgroup_records;
         
         RM_CUDA_CHECK( cudaMallocHost( 
             &ret->record_h, 
@@ -282,7 +229,7 @@ SimHitProgramGroupPtr make_program_group_sim_hit(
             RM_OPTIX_CHECK( optixSbtRecordPackHeader( 
                 ret->prog_group,
                 &ret->record_h[i] ) );
-            ret->record_h[i].data = scene->sbt_data;
+            ret->record_h[i].data = scene->get_mesh(i)->sbt_data;
         }
         
         RM_CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &ret->record ), hitgroup_record_size ) );
@@ -299,8 +246,6 @@ SimHitProgramGroupPtr make_program_group_sim_hit(
         ret->record_count = n_hitgroup_records;
     }
 
-    scene->addEventReceiver(ret);
-
     m_program_group_sim_hit_cache[scene][module] = ret;
 
     return ret;
@@ -310,9 +255,8 @@ SimHitProgramGroupPtr make_program_group_sim_hit(
     OptixScenePtr scene,
     const OptixSimulationDataGeneric& flags)
 {
-    ProgramModulePtr module = make_program_module_sim_hit_miss(scene, flags);
+    ProgramModulePtr module = make_program_module_sim_hit_miss(OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_ANY, flags);
     return make_program_group_sim_hit(scene, module);
 }
-
 
 } // namespace rmagine

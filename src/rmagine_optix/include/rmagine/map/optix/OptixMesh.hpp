@@ -54,7 +54,7 @@
 
 #include <assimp/mesh.h>
 
-#include "OptixGeometry.hpp"
+#include "OptixNode.hpp"
 
 #include "optix_definitions.h"
 
@@ -69,11 +69,12 @@ namespace rmagine
 //  * - Cuda Buffers for vertices, faces, vertex_normals and face_normals
 //  * - TraversableHandle for raytracing
 //  */
-class OptixMesh 
-: public OptixGeometry
+
+class OptixMesh
+: public OptixEntity
 {
 public:
-    using Base = OptixGeometry;
+    using Base = OptixEntity;
 
     OptixMesh(OptixContextPtr context = optix_default_context());
 
@@ -83,12 +84,7 @@ public:
     virtual void commit();
 
     virtual unsigned int depth() const;
-
-    virtual OptixGeometryType type() const 
-    {
-        return OptixGeometryType::MESH;
-    }
-
+    void buildGAS();
     void computeFaceNormals();
 
     const CUdeviceptr* getVertexBuffer() const;
@@ -100,6 +96,7 @@ public:
     Memory<Face, VRAM_CUDA>     faces;
     Memory<Vector, VRAM_CUDA>   face_normals;
     Memory<Vector, VRAM_CUDA>   vertex_normals;
+    Memory<Vector2, VRAM_CUDA>   vertex_uvs;
 
     float pre_transform_h[12];
     CUdeviceptr pre_transform = 0;
@@ -108,10 +105,6 @@ public:
 private:
     CUdeviceptr m_vertices_ref;
 };
-
-using OptixMeshPtr = std::shared_ptr<OptixMesh>;
-
-
 
 // 
 OptixMeshPtr make_optix_mesh(

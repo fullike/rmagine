@@ -56,6 +56,7 @@ struct OptixMeshSBT
 {
     Vector* vertex_normals = nullptr;
     Vector* face_normals = nullptr;
+    Vector2* vertex_uvs = nullptr;
     unsigned int id = 0;
 };
 

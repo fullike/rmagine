@@ -43,6 +43,7 @@
 
 #include <rmagine/util/optix/OptixContext.hpp>
 #include <rmagine/util/cuda/CudaStream.hpp>
+#include "OptixAccelerationStructure.hpp"
 
 namespace rmagine
 {
@@ -67,6 +68,11 @@ public:
         return m_stream;
     }
 
+    inline OptixAccelerationStructurePtr as() const
+    {
+        return m_as;
+    }
+
     void setContext(OptixContextPtr context);
 
     template<typename T>
@@ -78,6 +84,7 @@ public:
 protected:
     OptixContextPtr m_ctx;
     CudaStreamPtr m_stream;
+    OptixAccelerationStructurePtr m_as;
 };
 
 } // namespace rmagine

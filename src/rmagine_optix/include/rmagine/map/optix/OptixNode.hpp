@@ -28,7 +28,7 @@
 /**
  * @file
  * 
- * @brief OptixInst
+ * @brief OptixGeometry
  *
  * @date 03.10.2022
  * @author Alexander Mock
@@ -38,63 +38,48 @@
  * 
  */
 
-#ifndef RMAGINE_MAP_OPTIX_INSTANCE_HPP
-#define RMAGINE_MAP_OPTIX_INSTANCE_HPP
+#ifndef RMAGINE_MAP_OPTIX_GEOMETRY_HPP
+#define RMAGINE_MAP_OPTIX_GEOMETRY_HPP
+
+#include <memory>
+#include <rmagine/math/types.h>
+#include <rmagine/util/optix/OptixContext.hpp>
+#include <vector>
+#include <unordered_set>
 
 
 #include "optix_definitions.h"
-
-#include "OptixGeometry.hpp"
-#include "OptixScene.hpp"
-
-
-struct OptixInstance;
+#include "OptixEntity.hpp"
+#include "OptixTransformable.hpp"
 
 namespace rmagine
 {
 
-class OptixInst
-: public OptixGeometry
+class OptixNode
+: public OptixEntity
+, public OptixTransformable
 {
 public:
-    using Base = OptixGeometry;
-
-    OptixInst(OptixContextPtr context = optix_default_context());
-
-    virtual ~OptixInst();
-
-    void set(OptixScenePtr geom);
-    OptixScenePtr scene() const;
-
-    virtual void apply();
-    virtual void commit();
-    virtual unsigned int depth() const;
-
-    void setId(unsigned int id);
-    unsigned int id() const;
-
-    void disable();
-    void enable();
-
-    virtual OptixGeometryType type() const
+    OptixNode(OptixContextPtr context = optix_default_context());
+    virtual ~OptixNode();
+    virtual void apply(){}
+    void set_mesh(OptixMeshPtr mesh){m_mesh = mesh;}
+    void set_parent(OptixNodePtr parent){m_parent = parent;}
+    OptixNodePtr add_child()
     {
-        return OptixGeometryType::INSTANCE;
+        OptixNodePtr node = std::make_shared<OptixNode>(m_ctx);
+        node->set_parent(this_shared<OptixNode>());
+        m_children.emplace_back(node);
+        return node;
     }
-
-    const OptixInstance* data() const;
-
-    OptixInstanceSBT sbt_data;
+    void buildIAS();
 protected:
-    // TODO hide this from header
-    OptixInstance* m_data;
-
-    // filled after commit
-    // CUdeviceptr m_data_gpu = 0;
-    // CUdeviceptr m_data_gpu;
-
-    OptixScenePtr m_scene;
+    OptixMeshPtr m_mesh;
+    OptixNodePtr m_parent;
+    std::vector<OptixNodePtr> m_children;
 };
 
 } // namespace rmagine
 
-#endif // RMAGINE_MAP_OPTIX_INSTANCE_HPP
+#endif // RMAGINE_MAP_OPTIX_GEOMETRY_HPP
+

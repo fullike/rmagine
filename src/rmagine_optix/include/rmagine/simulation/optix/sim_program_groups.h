@@ -47,21 +47,16 @@ using SimMissProgramGroupPtr = std::shared_ptr<SimMissProgramGroup>;
 
 struct SimHitProgramGroup
 : public ProgramGroup
-, public OptixSceneEventReceiver
 {
-    using RecordData        = OptixSceneSBT;
+    using RecordData        = OptixMeshSBT;
     using SbtRecordData     = SbtRecord<RecordData>;
 
     SbtRecordData*        record_h      = nullptr;
-
-    virtual void onSBTUpdated(bool size_changed) override;
 
     virtual ~SimHitProgramGroup();
 };
 
 using SimHitProgramGroupPtr = std::shared_ptr<SimHitProgramGroup>;
-
-
 
 /// ProgramGroup
 // - RayGen
@@ -90,7 +85,6 @@ SimHitProgramGroupPtr make_program_group_sim_hit(
 SimHitProgramGroupPtr make_program_group_sim_hit(
     OptixScenePtr scene,
     const OptixSimulationDataGeneric& flags);
-
 
 } // namespace rmagine
 

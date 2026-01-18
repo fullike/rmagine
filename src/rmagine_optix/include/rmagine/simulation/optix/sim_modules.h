@@ -17,12 +17,12 @@ namespace rmagine
 // ProgramModule
 // - Gen
 ProgramModulePtr make_program_module_sim_gen(
-    OptixScenePtr scene,
+    unsigned int graph_flags,
     unsigned int sensor_id);
 
 // - Hit, Miss
 ProgramModulePtr make_program_module_sim_hit_miss(
-    OptixScenePtr scene,
+    unsigned int graph_flags,
     const OptixSimulationDataGeneric& flags);
 
 
