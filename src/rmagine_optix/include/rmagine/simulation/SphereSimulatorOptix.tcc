@@ -36,7 +36,7 @@ template<typename BundleT>
 BundleT SphereSimulatorOptix::simulate(const Transform& Tbm) const
 {
   BundleT res;
-  resize_memory_bundle<VRAM_CUDA>(res, m_model->getWidth(), m_model->getHeight(), 1);
+  resize_memory_bundle<VRAM_CUDA>(res, m_width, m_height, 1);
   simulate(Tbm, res);
   return res;
 }

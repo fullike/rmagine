@@ -1,7 +1,9 @@
+
 #include <chrono>
 #include <memory>
 #include <vector>
 #include <random>
+#include <filesystem>
 
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/point_cloud2.hpp"
@@ -14,47 +16,19 @@
 #include "visualization_msgs/msg/marker.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "interactive_markers/interactive_marker_server.hpp"
+#include "tinyxml2.h"
 
 #include <rmagine/types/sensor_models.h>
 #include <rmagine/util/StopWatch.hpp>
 #include <rmagine/types/Memory.hpp>
 #include <rmagine/map/AssimpIO.hpp>
-#include <rmagine/simulation/PinholeSimulatorOptix.hpp>
-#include <rmagine/simulation/SphereSimulatorOptix.hpp>
+#include <rmagine/map/optix/OptixScene.hpp>
+#include <rmagine/map/optix/OptixNode.hpp>
 #include <rmagine/types/MemoryCuda.hpp>
 
 using namespace rmagine;
+using namespace tinyxml2;
 using namespace std::chrono_literals;
-
-Memory<LiDARModel, RAM> create_lidar_model()
-{
-    Memory<LiDARModel, RAM> model(1);
-    model->theta.min = -M_PI;
-    model->theta.inc = 0.4 * M_PI / 180.0;
-    model->theta.size = 900;
-
-    model->phi.min = -15.0 * M_PI / 180.0;
-    model->phi.inc = 2.0 * M_PI / 180.0;
-    model->phi.size = 16;
-    
-    model->range.min = 0.1;
-    model->range.max = 130.0;
-    return model;
-}
-
-Memory<CameraModel, RAM> create_camera_model()
-{
-    Memory<CameraModel, RAM> model(1);
-    model->width = 640;
-    model->height = 480;
-    model->c[0] = 319.5; // ~ half of width
-    model->c[1] = 239.5; // ~ half of height
-    model->f[0] = 525;
-    model->f[1] = 525;
-    model->range.min = 0.0;
-    model->range.max = 100.0;
-    return model;
-}
 
 inline Transform Convert(const geometry_msgs::msg::Pose& pose)
 {
@@ -82,12 +56,114 @@ inline geometry_msgs::msg::Pose Convert(const Transform& t)
   return pose;
 }
 
-class PointCloud2Publisher : public rclcpp::Node
+void make_mjcf_tree(XMLElement* xml, OptixScenePtr scene, OptixNodePtr node, const std::filesystem::path& path)
+{
+  const char* name = xml->Attribute("name");
+  const char* pos = xml->Attribute("pos");
+  const char* quat = xml->Attribute("quat");
+  if (name)
+    node->name = name;
+  Transform T = Transform::Identity();
+  if (pos)
+  {
+    std::istringstream p(pos);
+    p >> T.t.x >> T.t.y >> T.t.z;
+  }
+  if (quat)
+  {
+    std::istringstream q(quat);
+    q >> T.R.w >> T.R.x >> T.R.y >> T.R.z;
+  }
+  node->setTransform(T);
+  if(const char* mesh = xml->Attribute("mesh"))
+  {
+      node->set_mesh(scene->get_mesh(mesh));
+  }
+  for (XMLElement* body = xml->FirstChildElement(); body; body = body->NextSiblingElement())
+  {
+    const char* name = body->Name();
+    if (strcmp(name,"include")==0)
+    {
+      std::filesystem::path file_path = path / body->Attribute("file");
+      if (!std::filesystem::exists(file_path))
+        file_path = path.parent_path() / body->Attribute("file");
+      XMLDocument include_doc;
+      include_doc.LoadFile(file_path.string().c_str());
+      XMLElement* root = include_doc.RootElement();
+      for (XMLElement* inner_body = root->FirstChildElement(); inner_body; inner_body = inner_body->NextSiblingElement())
+      {
+        const char* inner_name = inner_body->Name();
+        if (strcmp(inner_name,"body")==0 || strcmp(inner_name,"geom")==0)
+        {
+          OptixNodePtr child = node->add_node();
+          make_mjcf_tree(inner_body, scene, child, file_path.parent_path());
+        }
+      }
+    }
+    else if (strcmp(name,"body")==0 || strcmp(name,"geom")==0)
+    {
+      OptixNodePtr child = node->add_node();
+      make_mjcf_tree(body, scene, child, path);
+    }
+  }
+}
+
+void recursive_add_mesh(XMLElement* assets, OptixScenePtr scene, const std::filesystem::path& path)
+{
+  AssimpIO io;
+  for (XMLElement* asset = assets->FirstChildElement(); asset; asset = asset->NextSiblingElement())
+  {
+    const char* name = asset->Name();
+    std::filesystem::path file_path = path / asset->Attribute("file");
+    if (strcmp(name,"include")==0)
+    {
+      if (!std::filesystem::exists(file_path))
+        file_path = path.parent_path() / asset->Attribute("file");
+      XMLDocument include_doc;
+      include_doc.LoadFile(file_path.string().c_str());
+      XMLElement* root = include_doc.RootElement();
+      recursive_add_mesh(root, scene, file_path.parent_path());
+    }
+    else if (strcmp(name,"mesh")==0)
+    {
+      if (!std::filesystem::exists(file_path))
+        file_path = path.parent_path().parent_path() / "meshes" / asset->Attribute("file");
+      const aiScene* ascene = io.ReadFile(file_path.string(), 0);
+      OptixMeshPtr mesh = make_optix_mesh(ascene->mMeshes[0], scene->context());
+      const char* scale = asset->Attribute("scale");
+      if (scale)
+      {
+        std::istringstream s(scale);
+        s >> mesh->local_scale.x >> mesh->local_scale.y >> mesh->local_scale.z;
+      }
+      mesh->name = asset->Attribute("name");
+      //std::cout << mesh->name << ": " << mesh->vertices.size() << std::endl;
+      mesh->commit();
+      scene->add_mesh(mesh);
+    }
+  }
+}
+
+OptixMapPtr import_mjcf_map(const std::string& filepath, OptixContextPtr optix_ctx = optix_default_context())
+{
+  XMLDocument doc;
+  doc.LoadFile(filepath.c_str());
+  XMLElement* root = doc.RootElement();
+  XMLElement* assets = root->FirstChildElement("asset");
+  OptixScenePtr scene = std::make_shared<OptixScene>(optix_ctx);
+  std::filesystem::path path = std::filesystem::path(filepath).parent_path();
+  recursive_add_mesh(assets, scene, path);
+  make_mjcf_tree(root->FirstChildElement("worldbody"), scene, scene->root(), path);
+  scene->commit();
+  return std::make_shared<OptixMap>(scene);
+}
+
+class OptixRosNode : public rclcpp::Node
 {
 public:
-  PointCloud2Publisher()
-  : Node("pointcloud2_publisher")
+  OptixRosNode() : Node("OptixRosNode")
   {
+    declare_parameter<std::string>("map_file");
     // 创建交互标记服务器
     server_ = std::make_shared<interactive_markers::InteractiveMarkerServer>(
       "control_marker",
@@ -103,20 +179,18 @@ public:
     
     // 创建交互标记
     createInteractiveMarker();
-    pub_pc = this->create_publisher<sensor_msgs::msg::PointCloud2>("/pointcloud", 10);
+    pub_lidar_front = this->create_publisher<sensor_msgs::msg::PointCloud2>("/lidar_front", 10);
+    pub_lidar_back = this->create_publisher<sensor_msgs::msg::PointCloud2>("/lidar_back", 10);
     pub_img = this->create_publisher<sensor_msgs::msg::Image>("/image_raw", 10);
-    timer_ = this->create_wall_timer(100ms, std::bind(&PointCloud2Publisher::timer_callback, this));
+    timer_ = this->create_wall_timer(100ms, std::bind(&OptixRosNode::timer_callback, this));
 
-    OptixMapPtr usd_scene = import_optix_map("/home/zy/assets/background/home_b/Background/test.usd");
-    lidar_sim = std::make_shared<SphereSimulatorOptix>(usd_scene);
-    camera_sim = std::make_shared<PinholeSimulatorOptix>(usd_scene);
-
-    lidar_model = create_lidar_model();
-    lidar_sim->setModel(lidar_model);
-
-    camera_model = create_camera_model();
-    camera_sim->setModel(camera_model);
-
+    std::string map_path = get_parameter("map_file").as_string();
+    OptixMapPtr map = import_mjcf_map(map_path);
+    OptixNodePtr base_link = map->scene()->root()->get_node("/base_link");
+    lidar_front = base_link->add_lidar();
+    lidar_front->create_sim(map);
+    lidar_back = base_link->add_lidar();
+    lidar_back->create_sim(map);
     RCLCPP_INFO(this->get_logger(), "PointCloud2 publisher started.");
   }
 
@@ -239,7 +313,7 @@ private:
     // 将交互标记添加到服务器
     server_->insert(
       int_marker,
-      std::bind(&PointCloud2Publisher::markerFeedbackCallback, this, std::placeholders::_1));
+      std::bind(&OptixRosNode::markerFeedbackCallback, this, std::placeholders::_1));
     
     server_->applyChanges();
   }
@@ -279,14 +353,11 @@ private:
     // T.t.x = 0.0;
     // T.t.y = 0.0;
     // T.t.z = 1.0;
-    Memory<Transform, RAM> Tbm(1);
-    Tbm[0] = CamT;
-    Memory<Transform, VRAM_CUDA> Tbm_gpu;
-    Tbm_gpu = Tbm;
-    publish_lidar(Tbm_gpu);
-    publish_camera(Tbm_gpu);
+    publish_lidar(lidar_front, pub_lidar_front);
+    publish_lidar(lidar_back, pub_lidar_back);
+    //publish_camera(Tbm_gpu);
   }
-  void publish_lidar(Memory<Transform, VRAM_CUDA>& Tbm_gpu)
+  void publish_lidar(OptixLidarPtr lidar, rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_pc)
   {
     using ResultT = Bundle<
     Points<VRAM_CUDA>
@@ -296,7 +367,7 @@ private:
     >;
     //res.points.resize(lidar_model->size());
     //std::cout << Tbm.size() * model->size() << std::endl;
-    ResultT res = lidar_sim->simulate<ResultT>(Tbm_gpu);
+    ResultT res = lidar->get_data<ResultT>();
   
     // Download results
     Memory<Point, RAM> points = res.points;
@@ -354,10 +425,10 @@ private:
   
     pub_pc->publish(msg);
   }
-  void publish_camera(Memory<Transform, VRAM_CUDA>& Tbm_gpu)
+  void publish_camera(OptixCameraPtr camera)
   {
     using ResultT = Bundle<Colors<VRAM_CUDA>>;
-    auto res = camera_sim->simulate<ResultT>(Tbm_gpu);
+    ResultT res = camera->get_data<ResultT>();
     Memory<uint32_t, RAM> colors = res.colors;
 
     auto msg = sensor_msgs::msg::Image();
@@ -385,19 +456,22 @@ private:
   Transform CamT;
   std::shared_ptr<interactive_markers::InteractiveMarkerServer> server_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_cam;
-  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_pc;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_lidar_front;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_lidar_back;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_img;
   rclcpp::TimerBase::SharedPtr timer_;
-  SphereSimulatorOptixPtr lidar_sim;
-  PinholeSimulatorOptixPtr camera_sim;
-  Memory<LiDARModel, RAM> lidar_model;
-  Memory<CameraModel, RAM> camera_model;
+  OptixLidarPtr lidar_front;
+  OptixLidarPtr lidar_back;
+  // SphereSimulatorOptixPtr lidar_sim;
+  // PinholeSimulatorOptixPtr camera_sim;
+  // Memory<LiDARModel, RAM> lidar_model;
+  // Memory<CameraModel, RAM> camera_model;
 };
 
 int main(int argc, char **argv)
 {
   rclcpp::init(argc, argv);
-  auto node = std::make_shared<PointCloud2Publisher>();
+  auto node = std::make_shared<OptixRosNode>();
   rclcpp::spin(node);
   rclcpp::shutdown();
   return 0;

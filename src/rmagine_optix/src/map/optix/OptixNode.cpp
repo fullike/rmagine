@@ -9,6 +9,36 @@
 namespace rmagine
 {
 
+Memory<LiDARModel, RAM> create_lidar_model()
+{
+    Memory<LiDARModel, RAM> model(1);
+    model->theta.min = -M_PI;
+    model->theta.inc = 0.4 * M_PI / 180.0;
+    model->theta.size = 900;
+
+    model->phi.min = -15.0 * M_PI / 180.0;
+    model->phi.inc = 2.0 * M_PI / 180.0;
+    model->phi.size = 16;
+
+    model->range.min = 0.1;
+    model->range.max = 130.0;
+    return model;
+}
+
+Memory<CameraModel, RAM> create_camera_model()
+{
+    Memory<CameraModel, RAM> model(1);
+    model->width = 640;
+    model->height = 480;
+    model->c[0] = 319.5; // ~ half of width
+    model->c[1] = 239.5; // ~ half of height
+    model->f[0] = 525;
+    model->f[1] = 525;
+    model->range.min = 0.0;
+    model->range.max = 100.0;
+    return model;
+}
+
 OptixNode::OptixNode(OptixContextPtr context)
 :OptixEntity(context)
 ,OptixTransformable()
@@ -21,131 +51,99 @@ OptixNode::~OptixNode()
     // std::cout << "[OptixGeometry::~OptixGeometry()] destroyed." << std::endl;
 }
 
-void OptixNode::buildIAS()
+OptixNodePtr OptixNode::add_node()
 {
+    OptixNodePtr node = std::make_shared<OptixNode>(m_ctx);
+    add_child(node);
+    return node;
+}
+
+OptixCameraPtr OptixNode::add_camera()
+{
+    OptixCameraPtr node = std::make_shared<OptixCamera>(m_ctx);
+    add_child(node);
+    return node;
+}
+
+OptixLidarPtr OptixNode::add_lidar()
+{
+    OptixLidarPtr node = std::make_shared<OptixLidar>(m_ctx);
+    add_child(node);
+    return node;
+}
+
+void OptixNode::get_renderables(std::vector<OptixNodePtr>& nodes)
+{
+    m_world = matrix();
+    if (m_parent)
+        m_world = m_parent->get_world_matrix() * m_world;
     if (m_mesh)
+        nodes.emplace_back(this_shared<OptixNode>());
+    for (OptixNodePtr child : m_children)
+        child->get_renderables(nodes);
+}
+
+OptixNodePtr OptixNode::get_node(const std::string& path)
+{
+    size_t start = 1;
+    size_t end = path.find("/",start);
+    if (end == std::string::npos)
+        end = path.length();
+    if (end <= start)
+        return this_shared<OptixNode>();
+    std::string name = path.substr(start, end-start);
+    for (OptixNodePtr child : m_children)
     {
-        m_as = m_mesh->as();
-        return;
-    }
-    const size_t n_instances = m_children.size();
-    // fill m_hitgroup_data
-    Memory<OptixInstance, RAM> inst_h(n_instances);
-    for(int idx = 0; idx < n_instances; idx++)
-    {
-        OptixNodePtr child = m_children[idx];
-        child->buildIAS();
-        OptixInstance inst = {};
-        Matrix4x4 M = child->matrix();
-        inst.transform[ 0] = M(0,0); // Rxx
-        inst.transform[ 1] = M(0,1); // Rxy
-        inst.transform[ 2] = M(0,2); // Rxz
-        inst.transform[ 3] = M(0,3); // tx
-        inst.transform[ 4] = M(1,0); // Ryx
-        inst.transform[ 5] = M(1,1); // Ryy
-        inst.transform[ 6] = M(1,2); // Ryz
-        inst.transform[ 7] = M(1,3); // ty
-        inst.transform[ 8] = M(2,0); // Rzx
-        inst.transform[ 9] = M(2,1); // Rzy
-        inst.transform[10] = M(2,2); // Rzz
-        inst.transform[11] = M(2,3); // tz
-        inst.traversableHandle = child->as()->handle;
-        inst.instanceId = idx;
-        inst.visibilityMask = 1;
-        inst_h[idx] = inst;
-    }
-
-    // std::cout << "- COPY INSTANCE DATA" << std::endl;
-
-    // COPY INSTANCES DATA
-    CUdeviceptr m_inst_buffer;
-    RM_CUDA_CHECK( cudaMalloc(
-        reinterpret_cast<void**>( &m_inst_buffer ),
-        inst_h.size() * sizeof(OptixInstance) ) );
-
-    RM_CUDA_CHECK( cudaMemcpyAsync(
-                reinterpret_cast<void*>( m_inst_buffer ),
-                inst_h.raw(),
-                inst_h.size() * sizeof(OptixInstance),
-                cudaMemcpyHostToDevice,
-                m_stream->handle()
-                ) );
-    // std::cout << "- MAKE BUILD INPUT" << std::endl;
-    // BEGIN WITH BUILD INPUT
-    OptixBuildInput instance_input = {};
-    instance_input.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
-    instance_input.instanceArray.numInstances = inst_h.size();
-    instance_input.instanceArray.instances = m_inst_buffer;
-
-    OptixAccelBuildOptions ias_accel_options = {};
-    unsigned int build_flags = OPTIX_BUILD_FLAG_NONE;
-    { // BUILD FLAGS
-        build_flags |= OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
-        build_flags |= OPTIX_BUILD_FLAG_ALLOW_UPDATE;
-        #if OPTIX_VERSION >= 70300
-        build_flags |= OPTIX_BUILD_FLAG_ALLOW_RANDOM_INSTANCE_ACCESS;
-        #endif
-    }
-
-    ias_accel_options.buildFlags = build_flags;
-    ias_accel_options.motionOptions.numKeys = 1;
-    ias_accel_options.operation = OPTIX_BUILD_OPERATION_BUILD;
-
-    OptixAccelBufferSizes ias_buffer_sizes;
-    RM_OPTIX_CHECK( optixAccelComputeMemoryUsage(
-        m_ctx->ref(),
-        &ias_accel_options,
-        &instance_input,
-        1,
-        &ias_buffer_sizes ) );
-
-
-    CUdeviceptr d_temp_buffer_ias;
-    RM_CUDA_CHECK( cudaMalloc(
-        reinterpret_cast<void**>( &d_temp_buffer_ias ),
-        ias_buffer_sizes.tempSizeInBytes) );
-
-
-    if(!m_as)
-    {
-        // make new
-        m_as = std::make_shared<OptixAccelerationStructure>();
-        RM_CUDA_CHECK( cudaMalloc(
-                reinterpret_cast<void**>( &m_as->buffer ),
-                ias_buffer_sizes.outputSizeInBytes
-                ) );
-    } else {
-        if(m_as->buffer_size != ias_buffer_sizes.outputSizeInBytes)
+        if (child->name == name)
         {
-            // realloc
-            RM_CUDA_CHECK( cudaFree( reinterpret_cast<void*>( m_as->buffer ) ) );
-            RM_CUDA_CHECK( cudaMalloc(
-                    reinterpret_cast<void**>( &m_as->buffer ),
-                    ias_buffer_sizes.outputSizeInBytes
-                    ) );
+            OptixNodePtr ret = child->get_node(path.substr(end));
+            if (ret)
+                return ret;
         }
     }
+    return OptixNodePtr();
+}
 
-    m_as->buffer_size = ias_buffer_sizes.outputSizeInBytes;
-    m_as->n_elements = n_instances;
+void OptixNode::set_mesh(OptixMeshPtr mesh)
+{
+    m_mesh = mesh;
+    m_S = mesh->local_scale;
+}
 
+OptixCamera::OptixCamera(OptixContextPtr context)
+:OptixNode(context)
+{
+    // std::cout << "[OptixGeometry::OptixGeometry()] constructed." << std::endl;
+}
 
-    RM_OPTIX_CHECK(optixAccelBuild(
-        m_ctx->ref(),
-        m_stream->handle(),
-        &ias_accel_options,
-        &instance_input,
-        1, // num build inputs
-        d_temp_buffer_ias,
-        ias_buffer_sizes.tempSizeInBytes,
-        m_as->buffer,
-        ias_buffer_sizes.outputSizeInBytes,
-        &m_as->handle,
-        nullptr,
-        0
-    ));
+OptixCamera::~OptixCamera()
+{
+    // std::cout << "[OptixGeometry::~OptixGeometry()] destroyed." << std::endl;
+}
 
-    RM_CUDA_CHECK( cudaFree( reinterpret_cast<void*>( d_temp_buffer_ias ) ) );
+void OptixCamera::create_sim(OptixMapPtr map)
+{
+    sim = std::make_shared<PinholeSimulatorOptix>(map);
+    model = create_camera_model();
+    sim->setModel(model);
+}
+
+OptixLidar::OptixLidar(OptixContextPtr context)
+:OptixNode(context)
+{
+    // std::cout << "[OptixGeometry::OptixGeometry()] constructed." << std::endl;
+}
+
+OptixLidar::~OptixLidar()
+{
+    // std::cout << "[OptixGeometry::~OptixGeometry()] destroyed." << std::endl;
+}
+
+void OptixLidar::create_sim(OptixMapPtr map)
+{
+    sim = std::make_shared<SphereSimulatorOptix>(map);
+    model = create_lidar_model();
+    sim->setModel(model);
 }
 
 } // namespace rmagine

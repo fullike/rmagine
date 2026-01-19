@@ -54,7 +54,7 @@
 
 #include <assimp/mesh.h>
 
-#include "OptixNode.hpp"
+#include "OptixEntity.hpp"
 
 #include "optix_definitions.h"
 
@@ -97,10 +97,7 @@ public:
     Memory<Vector, VRAM_CUDA>   face_normals;
     Memory<Vector, VRAM_CUDA>   vertex_normals;
     Memory<Vector2, VRAM_CUDA>   vertex_uvs;
-
-    float pre_transform_h[12];
-    CUdeviceptr pre_transform = 0;
-
+    Vector3 local_scale;
     OptixMeshSBT sbt_data;
 private:
     CUdeviceptr m_vertices_ref;

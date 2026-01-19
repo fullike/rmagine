@@ -242,7 +242,7 @@ SimHitProgramGroupPtr make_program_group_sim_hit(
                     scene->stream()->handle()
                     ) );
 
-        ret->record_stride = sizeof( SimMissProgramGroup::SbtRecordData );
+        ret->record_stride = sizeof( SimHitProgramGroup::SbtRecordData );
         ret->record_count = n_hitgroup_records;
     }
 

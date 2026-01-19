@@ -38,12 +38,14 @@
  * 
  */
 
-#ifndef RMAGINE_MAP_OPTIX_GEOMETRY_HPP
-#define RMAGINE_MAP_OPTIX_GEOMETRY_HPP
+#ifndef RMAGINE_MAP_OPTIX_NODE_HPP
+#define RMAGINE_MAP_OPTIX_NODE_HPP
 
 #include <memory>
 #include <rmagine/math/types.h>
 #include <rmagine/util/optix/OptixContext.hpp>
+#include <rmagine/simulation/PinholeSimulatorOptix.hpp>
+#include <rmagine/simulation/SphereSimulatorOptix.hpp>
 #include <vector>
 #include <unordered_set>
 
@@ -63,23 +65,60 @@ public:
     OptixNode(OptixContextPtr context = optix_default_context());
     virtual ~OptixNode();
     virtual void apply(){}
-    void set_mesh(OptixMeshPtr mesh){m_mesh = mesh;}
-    void set_parent(OptixNodePtr parent){m_parent = parent;}
-    OptixNodePtr add_child()
+    OptixNodePtr add_node();
+    OptixCameraPtr add_camera();
+    OptixLidarPtr add_lidar();
+    void add_child(OptixNodePtr child)
     {
-        OptixNodePtr node = std::make_shared<OptixNode>(m_ctx);
-        node->set_parent(this_shared<OptixNode>());
-        m_children.emplace_back(node);
-        return node;
+        child->set_parent(this_shared<OptixNode>());
+        m_children.emplace_back(child);
     }
-    void buildIAS();
+    void get_renderables(std::vector<OptixNodePtr>& nodes);
+    void set_mesh(OptixMeshPtr mesh);
+    void set_parent(OptixNodePtr parent){m_parent = parent;}
+    const Matrix4x4& get_world_matrix() {return m_world;}
+    OptixMeshPtr get_mesh(){return m_mesh;}
+    OptixNodePtr get_node(const std::string& path);
 protected:
     OptixMeshPtr m_mesh;
     OptixNodePtr m_parent;
+    Matrix4x4 m_world;
     std::vector<OptixNodePtr> m_children;
+};
+
+class OptixCamera : public OptixNode
+{
+public:
+    OptixCamera(OptixContextPtr context = optix_default_context());
+    virtual ~OptixCamera();
+    void create_sim(OptixMapPtr map);
+    template<typename BundleT>
+    BundleT get_data()
+    {
+        return sim->simulate<BundleT>(m_T);
+    }
+protected:
+    PinholeSimulatorOptixPtr sim;
+    Memory<CameraModel, RAM> model;
+};
+
+class OptixLidar : public OptixNode
+{
+public:
+    OptixLidar(OptixContextPtr context = optix_default_context());
+    virtual ~OptixLidar();
+    void create_sim(OptixMapPtr map);
+    template<typename BundleT>
+    BundleT get_data()
+    {
+        return sim->simulate<BundleT>(m_T);
+    }
+protected:
+    SphereSimulatorOptixPtr sim;
+    Memory<LiDARModel, RAM> model;
 };
 
 } // namespace rmagine
 
-#endif // RMAGINE_MAP_OPTIX_GEOMETRY_HPP
+#endif // RMAGINE_MAP_OPTIX_NODE_HPP
 

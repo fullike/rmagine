@@ -76,10 +76,12 @@ public:
     void add_mesh(OptixMeshPtr mesh) {m_meshes.emplace_back(mesh);}
     void add_material(OptixMaterialPtr material) {m_materials.emplace_back(material);}
     void add_texture(OptixTexturePtr texture) {m_textures.emplace_back(texture);}
+    void buildIAS();
     void commit();
     int num_meshes(){return m_meshes.size();}
     OptixMeshPtr get_mesh(int index){return m_meshes[index];}
-    OptixNodePtr get_root(){return m_root;}
+    OptixMeshPtr get_mesh(const std::string& name);
+    OptixNodePtr root(){return m_root;}
 protected:
     std::vector<OptixMeshPtr> m_meshes;
     std::vector<OptixMaterialPtr> m_materials;

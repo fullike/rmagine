@@ -6,11 +6,13 @@ find_package(geometry_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(interactive_markers REQUIRED)
 find_package(assimp REQUIRED)
-
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(TINYXML2 REQUIRED tinyxml2)
 add_executable(rmagine_sensors main.cpp)
 target_link_libraries(rmagine_sensors
     rmagine::core
     rmagine::optix
+    ${TINYXML2_LIBRARIES}
     ${ASSIMP_LIBRARIES}
 )
 install(TARGETS rmagine_sensors

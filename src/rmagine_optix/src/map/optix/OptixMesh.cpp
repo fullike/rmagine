@@ -26,17 +26,11 @@ OptixMesh::OptixMesh(OptixContextPtr context)
 :Base(context)
 {
     // std::cout << "[OptixMesh::OptixMesh()] constructed." << std::endl;
+    local_scale = {1.,1.,1.};
 }
 
 OptixMesh::~OptixMesh()
 {
-    // std::cout << "[OptixMesh::~OptixMesh()]" << std::endl;
-    if(pre_transform)
-    {
-        cudaFree( reinterpret_cast<void*>( pre_transform ) );
-    }
-
-    // std::cout << "[OptixMesh::~OptixMesh()] destroyed." << std::endl;
 }
 
 void OptixMesh::apply()
@@ -70,11 +64,6 @@ void OptixMesh::buildGAS()
     triangle_input.triangleArray.indexStrideInBytes  = sizeof(Face);
     triangle_input.triangleArray.numIndexTriplets    = faces.size();
     triangle_input.triangleArray.indexBuffer         = getFaceBuffer();
-    if(pre_transform)
-    {
-        triangle_input.triangleArray.transformFormat =  OPTIX_TRANSFORM_FORMAT_MATRIX_FLOAT12;
-        triangle_input.triangleArray.preTransform        = pre_transform;
-    }
     // ADDITIONAL SETTINGS
     // move them to mesh object
     triangle_input.triangleArray.flags         = (const uint32_t [1]) {
@@ -197,7 +186,7 @@ OptixMeshPtr make_optix_mesh(
                 ai_vertices[i].x,
                 ai_vertices[i].y,
                 ai_vertices[i].z};
-    }
+            }
     ret->vertices = vertices_cpu;
 
     for(size_t i=0; i<num_faces; i++)
